@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -14,8 +13,7 @@ import (
 func main() {
 	text, err := ioutil.ReadFile(os.Args[2])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
+		panic(err)
 	}
 	lines := strings.Split(string(text), "\n")
 	if len(lines[len(lines)-1]) == 0 {
@@ -29,13 +27,12 @@ func main() {
 
 	screen, err := tcell.NewScreen()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
+		panic(err)
 	}
 	if err := screen.Init(); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
+		panic(err)
 	}
+	defer screen.Fini()
 
 	r := ui.Renderer{S: &s, Screen: screen}
 	r.Render()
@@ -70,8 +67,7 @@ func main() {
 			case tcell.KeyUp:
 				s.MoveUp(9)
 			case tcell.KeyEscape:
-				screen.Fini()
-				os.Exit(0)
+				return
 			}
 			r.Render()
 		}
