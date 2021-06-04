@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 
 	"github.com/callum-oakley/vee/state"
 	"github.com/callum-oakley/vee/ui"
@@ -16,7 +17,15 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
-	s := state.NewState(os.Args[2], 4, text)
+	lines := strings.Split(string(text), "\n")
+	if len(lines[len(lines)-1]) == 0 {
+		lines = lines[:len(lines)-1]
+	}
+	s := state.State{
+		FilePath: os.Args[2],
+		TabWidth: 4,
+		Text:     lines,
+	}
 
 	screen, err := tcell.NewScreen()
 	if err != nil {
