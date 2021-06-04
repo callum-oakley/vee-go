@@ -37,30 +37,43 @@ func main() {
 		os.Exit(1)
 	}
 
-	ui.Render(s, screen)
+	r := ui.Renderer{S: &s, Screen: screen}
+	r.Render()
 
 	for {
 		switch e := screen.PollEvent().(type) {
 		case *tcell.EventResize:
-			ui.Render(s, screen)
+			r.Render()
 		case *tcell.EventKey:
 			switch e.Key() {
 			case tcell.KeyRune:
 				switch e.Rune() {
+				case 'y':
+					s.MoveStartOfLine()
+				case 'u':
+					s.MoveStartOfWord()
+				case 'i':
+					s.MoveEndOfWord()
+				case 'o':
+					s.MoveEndOfLine()
 				case 'h':
-					s.Left()
+					s.MoveLeft()
 				case 'j':
-					s.Down()
+					s.MoveDown(1)
 				case 'k':
-					s.Up()
+					s.MoveUp(1)
 				case 'l':
-					s.Right()
+					s.MoveRight()
 				}
-				ui.Render(s, screen)
+			case tcell.KeyDown:
+				s.MoveDown(9)
+			case tcell.KeyUp:
+				s.MoveUp(9)
 			case tcell.KeyEscape:
 				screen.Fini()
 				os.Exit(0)
 			}
+			r.Render()
 		}
 	}
 }
