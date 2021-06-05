@@ -21,6 +21,11 @@ type cursor struct {
 	X, Y, col int
 }
 
+type history struct {
+	text           []string
+	anchor, cursor cursor
+}
+
 type State struct {
 	FilePath       string
 	TabWidth       int
@@ -28,6 +33,12 @@ type State struct {
 	Anchor, Cursor cursor
 	mode           mode
 	Msg            string
+	historyHead    int
+	history        []history
+}
+
+func (s *State) Init() {
+	s.snapshot()
 }
 
 func visualWidth(col, tabWidth int, char rune) int {
@@ -268,10 +279,10 @@ func (s *State) setMode(m mode) {
 	switch s.mode {
 	case modeInsert:
 		s.move(s.moveLeft)
+		setCursorShape(1)
+		s.snapshot()
 	}
 	switch m {
-	case modeNormal:
-		setCursorShape(1)
 	case modeInsert:
 		if s.Cursor.X == -1 {
 			s.setCursorX(&s.Cursor, 0)
@@ -280,6 +291,53 @@ func (s *State) setMode(m mode) {
 		setCursorShape(3)
 	}
 	s.mode = m
+}
+
+// TODO something like this to model changes instead?
+// type snap struct {
+// 	anchor, cursor Cursor
+// 	startY, endY   int
+// 	chunk          []string
+// }
+
+// type change struct {
+// 	before, after snap
+// }
+
+// TODO This is horrendously wasteful of memory but will do for a first pass. A
+// better implementation would just store a sequence of insertions and
+// deletions that can be reverted or reapplied.
+func (s *State) snapshot() {
+	text := make([]string, len(s.Text))
+	copy(text, s.Text)
+	s.history = s.history[:s.historyHead]
+	s.history = append(
+		s.history,
+		history{text: text, anchor: s.Anchor, cursor: s.Cursor},
+	)
+	s.historyHead++
+}
+
+func (s *State) undo() {
+	if s.historyHead <= 1 {
+		return
+	}
+	s.Text = make([]string, len(s.history[s.historyHead-2].text))
+	copy(s.Text, s.history[s.historyHead-2].text)
+	s.Anchor = s.history[s.historyHead-2].anchor
+	s.Cursor = s.history[s.historyHead-2].cursor
+	s.historyHead--
+}
+
+func (s *State) redo() {
+	if s.historyHead == len(s.history) {
+		return
+	}
+	s.Text = make([]string, len(s.history[s.historyHead].text))
+	copy(s.Text, s.history[s.historyHead].text)
+	s.Anchor = s.history[s.historyHead].anchor
+	s.Cursor = s.history[s.historyHead].cursor
+	s.historyHead++
 }
 
 func (s *State) HandleKey(e *tcell.EventKey) bool {
@@ -349,8 +407,14 @@ func (s *State) HandleKey(e *tcell.EventKey) bool {
 			// actions
 			case 'x':
 				s.delete()
+				s.snapshot()
 			case 'X':
 				s.deleteLines()
+				s.snapshot()
+			case 'z':
+				s.undo()
+			case 'Z':
+				s.redo()
 			}
 		case tcell.KeyUp:
 			if e.Modifiers() == tcell.ModShift {
