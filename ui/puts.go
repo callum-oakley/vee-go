@@ -7,7 +7,7 @@ import (
 
 // from https://github.com/gdamore/tcell/blob/master/_demos/unicode.go
 
-func puts(s tcell.Screen, style tcell.Style, x, y int, str string) {
+func puts(s tcell.Screen, style tcell.Style, x, y int, str string) int {
 	i := 0
 	var deferred []rune
 	dwidth := 0
@@ -54,4 +54,5 @@ func puts(s tcell.Screen, style tcell.Style, x, y int, str string) {
 		s.SetContent(x+i, y, deferred[0], deferred[1:], style)
 		i += dwidth
 	}
+	return i
 }

@@ -9,7 +9,10 @@ import (
 	rw "github.com/mattn/go-runewidth"
 )
 
-var statusStyle = tcell.StyleDefault.Background(tcell.ColorSilver)
+var (
+	statusStyle    = tcell.StyleDefault.Background(tcell.ColorSilver)
+	selectionStyle = tcell.StyleDefault.Background(tcell.ColorSilver)
+)
 
 type Renderer struct {
 	S      *state.State
@@ -31,21 +34,31 @@ func max(x, y int) int {
 	return y
 }
 
-func (r *Renderer) renderText() {
+func (r *Renderer) renderText(height int) {
 	// Discard lines we definitely won't be rendering.
-	height := r.h - 1
 	start := max(0, min(r.S.Cursor.Y-(height-1)/2, len(r.S.Text)-height))
 	rawLines := r.S.Text[start:min(start+height, len(r.S.Text))]
 
 	// Expand tabs and wrap.
 	var lines []string
 	var cursor struct{ x, y int }
+	var anchor struct{ x, y int }
+	if r.S.Anchor.Y >= start+height {
+		anchor.y = height
+	}
 	for y, line := range rawLines {
 		lines = append(lines, "")
+		if len(line) == 0 {
+			line = " "
+		}
 		for x, char := range line {
 			if x == max(0, r.S.Cursor.X) && y == r.S.Cursor.Y-start {
 				cursor.x = rw.StringWidth(lines[len(lines)-1])
 				cursor.y = len(lines) - 1
+			}
+			if x == max(0, r.S.Anchor.X) && y == r.S.Anchor.Y-start {
+				anchor.x = rw.StringWidth(lines[len(lines)-1])
+				anchor.y = len(lines) - 1
 			}
 			if rw.StringWidth(lines[len(lines)-1]+string(char)) > r.w {
 				lines = append(lines, "")
@@ -61,39 +74,65 @@ func (r *Renderer) renderText() {
 				lines[len(lines)-1] += string(char)
 			}
 		}
-		if y == r.S.Cursor.Y-start && len(line) == 0 {
-			cursor.y = len(lines) - 1
-		}
 	}
 
-	// Finally discard the lines that didn't make the cut after wrapping.
+	// Discard the lines that didn't make the cut after wrapping.
 	start = max(0, min(cursor.y-(height-1)/2, len(lines)-height))
 	lines = lines[start:min(start+height, len(lines))]
 	cursor.y -= start
+	anchor.y -= start
+	r.Screen.ShowCursor(cursor.x, cursor.y)
+
+	if cursor.x == anchor.x && cursor.y == anchor.y {
+		for y, line := range lines {
+			puts(r.Screen, tcell.StyleDefault, 0, y, line)
+		}
+		return
+	}
+
+	if cursor.y < anchor.y || cursor.y == anchor.y && cursor.x < anchor.x {
+		cursor, anchor = anchor, cursor
+	}
 
 	for y, line := range lines {
-		puts(r.Screen, tcell.StyleDefault, 0, y, line)
+		if y < anchor.y || y > cursor.y {
+			puts(r.Screen, tcell.StyleDefault, 0, y, line)
+		} else if y == anchor.y && y == cursor.y {
+			x := puts(r.Screen, tcell.StyleDefault, 0, y, line[:anchor.x])
+			x += puts(r.Screen, selectionStyle, x, y, line[anchor.x:cursor.x+1])
+			puts(r.Screen, tcell.StyleDefault, x, y, line[cursor.x+1:])
+		} else if y == anchor.y {
+			x := puts(r.Screen, tcell.StyleDefault, 0, y, line[:anchor.x])
+			puts(r.Screen, selectionStyle, x, y, line[anchor.x:])
+		} else if y == cursor.y {
+			x := puts(r.Screen, selectionStyle, 0, y, line[:cursor.x+1])
+			puts(r.Screen, tcell.StyleDefault, x, y, line[cursor.x+1:])
+		} else { // y > anchor.y && y < cursor.y
+			puts(r.Screen, selectionStyle, 0, y, line)
+		}
 	}
-	r.Screen.ShowCursor(cursor.x, cursor.y)
 }
 
-func (r *Renderer) renderStatus() {
-	left := r.S.FilePath
-	right := fmt.Sprintf("%v", r.S.Cursor.Y+1)
-	if r.S.Msg != "" {
-		right = r.S.Msg
-	}
-	padding := strings.Repeat(
+func padBetween(left, right string, width int) string {
+	return left + strings.Repeat(
 		" ",
-		r.w-rw.StringWidth(left)-rw.StringWidth(right),
-	)
-	puts(r.Screen, statusStyle, 0, r.h-1, left+padding+right)
+		width-rw.StringWidth(left)-rw.StringWidth(right),
+	) + right
+}
+
+func (r *Renderer) renderStatus(y int) {
+	puts(r.Screen, statusStyle, 0, y, padBetween(
+		r.S.FilePath,
+		fmt.Sprintf("%v", r.S.Cursor.Y+1),
+		r.w,
+	))
+	puts(r.Screen, tcell.StyleDefault, 0, y+1, r.S.Msg)
 }
 
 func (r *Renderer) Render() {
 	r.w, r.h = r.Screen.Size()
 	r.Screen.Clear()
-	r.renderText()
-	r.renderStatus()
+	r.renderText(r.h - 2)
+	r.renderStatus(r.h - 2)
 	r.Screen.Show()
 }
