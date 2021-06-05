@@ -48,8 +48,9 @@ func (r *Renderer) renderText(height int) {
 	}
 	for y, line := range rawLines {
 		lines = append(lines, "")
-		if len(line) == 0 {
-			line = " "
+		if len(line) == 0 ||
+			y == r.S.Cursor.Y-start && r.S.Cursor.X == len(line) {
+			line += " "
 		}
 		for x, char := range line {
 			if x == max(0, r.S.Cursor.X) && y == r.S.Cursor.Y-start {

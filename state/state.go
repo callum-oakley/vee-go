@@ -13,6 +13,7 @@ type mode int
 
 const (
 	modeNormal mode = iota
+	modeInsert
 	modeSpace
 )
 
@@ -24,7 +25,7 @@ type State struct {
 	FilePath       string
 	TabWidth       int
 	Text           []string
-	Cursor, Anchor cursor
+	Anchor, Cursor cursor
 	mode           mode
 	Msg            string
 }
@@ -151,46 +152,205 @@ func (s *State) move(f func(*cursor)) {
 	s.Anchor = s.Cursor
 }
 
+func (s *State) newLineAbove() {
+	s.Text = append(
+		s.Text[:s.Cursor.Y],
+		append([]string{""}, s.Text[s.Cursor.Y:]...)...,
+	)
+	s.setCursorY(&s.Cursor, s.Cursor.Y)
+	s.Anchor = s.Cursor
+}
+
+func (s *State) normaliseSelection() {
+	if s.Cursor.Y < s.Anchor.Y ||
+		s.Cursor.Y == s.Anchor.Y && s.Cursor.X < s.Anchor.X {
+		s.Cursor, s.Anchor = s.Anchor, s.Cursor
+	}
+}
+
+func (s *State) delete() {
+	s.normaliseSelection()
+	if s.Anchor.X == -1 {
+		s.Text[s.Cursor.Y] = s.Text[s.Cursor.Y][s.Cursor.X+1:]
+	} else {
+		s.Text[s.Cursor.Y] = s.Text[s.Anchor.Y][:s.Anchor.X] +
+			s.Text[s.Cursor.Y][s.Cursor.X+1:]
+	}
+	s.Text = append(s.Text[:s.Anchor.Y], s.Text[s.Cursor.Y:]...)
+	s.setCursorY(&s.Anchor, s.Anchor.Y)
+	s.Cursor = s.Anchor
+}
+
+func (s *State) deleteLines() {
+	s.normaliseSelection()
+	s.Text = append(s.Text[:s.Anchor.Y], s.Text[s.Cursor.Y+1:]...)
+	s.setCursorY(&s.Anchor, s.Anchor.Y)
+	s.Cursor = s.Anchor
+}
+
+func (s *State) insert(char rune) {
+	if char == '\n' {
+		newLine := s.Text[s.Cursor.Y][s.Cursor.X:]
+		s.Text[s.Cursor.Y] = s.Text[s.Cursor.Y][:s.Cursor.X]
+		s.Text = append(
+			s.Text[:s.Cursor.Y+1],
+			append([]string{newLine}, s.Text[s.Cursor.Y+1:]...)...,
+		)
+		s.setCursorY(&s.Cursor, s.Cursor.Y+1)
+		s.setCursorX(&s.Cursor, 0)
+		s.Anchor = s.Cursor
+		return
+	}
+	s.Text[s.Cursor.Y] = s.Text[s.Cursor.Y][:s.Cursor.X] +
+		string(char) + s.Text[s.Cursor.Y][s.Cursor.X:]
+	s.setCursorX(&s.Cursor, s.Cursor.X+1)
+	s.Anchor = s.Cursor
+}
+
+func (s *State) insertBackspace() {
+	if s.Cursor.X == 0 && s.Cursor.Y == 0 {
+		return
+	} else if s.Cursor.X == 0 {
+		x := len(s.Text[s.Cursor.Y-1])
+		s.Text[s.Cursor.Y-1] += s.Text[s.Cursor.Y]
+		s.Text = append(s.Text[:s.Cursor.Y], s.Text[s.Cursor.Y+1:]...)
+		s.setCursorY(&s.Cursor, s.Cursor.Y-1)
+		s.setCursorX(&s.Cursor, x)
+		s.Anchor = s.Cursor
+		return
+	}
+	s.Text[s.Cursor.Y] = s.Text[s.Cursor.Y][:s.Cursor.X-1] +
+		s.Text[s.Cursor.Y][s.Cursor.X:]
+	s.setCursorX(&s.Cursor, s.Cursor.X-1)
+	s.Anchor = s.Cursor
+}
+
+func (s *State) insertBackspaceWord() {
+	if s.Cursor.X == 0 && s.Cursor.Y == 0 {
+		return
+	} else if s.Cursor.X == 0 {
+		s.insertBackspace()
+		return
+	} else if match := reStartOfWord.FindStringIndex(
+		s.Text[s.Cursor.Y][:s.Cursor.X],
+	); match != nil {
+		s.Text[s.Cursor.Y] = s.Text[s.Cursor.Y][:match[0]] +
+			s.Text[s.Cursor.Y][s.Cursor.X:]
+		s.setCursorX(&s.Cursor, match[0])
+		s.Anchor = s.Cursor
+	} else {
+		s.Text[s.Cursor.Y] = s.Text[s.Cursor.Y][s.Cursor.X:]
+		s.setCursorX(&s.Cursor, 0)
+		s.Anchor = s.Cursor
+	}
+}
+
+func (s *State) insertDelete() {
+	if s.Cursor.X >= len(s.Text[s.Cursor.Y]) && s.Cursor.Y == len(s.Text)-1 {
+		return
+	} else if s.Cursor.X >= len(s.Text[s.Cursor.Y]) {
+		s.Text[s.Cursor.Y] += s.Text[s.Cursor.Y+1]
+		s.Text = append(s.Text[:s.Cursor.Y+1], s.Text[s.Cursor.Y+2:]...)
+		return
+	}
+	s.Text[s.Cursor.Y] = s.Text[s.Cursor.Y][:s.Cursor.X] +
+		s.Text[s.Cursor.Y][s.Cursor.X+1:]
+}
+
+func setCursorShape(n int) {
+	// https://invisible-island.net/xterm/ctlseqs/ctlseqs.html
+	// 1 blinking block (default)
+	// 3 blinking underline
+	fmt.Printf("\033[%d q", n)
+}
+
+func (s *State) setMode(m mode) {
+	switch s.mode {
+	case modeInsert:
+		s.move(s.moveLeft)
+	}
+	switch m {
+	case modeNormal:
+		setCursorShape(1)
+	case modeInsert:
+		if s.Cursor.X == -1 {
+			s.setCursorX(&s.Cursor, 0)
+		}
+		s.Anchor = s.Cursor
+		setCursorShape(3)
+	}
+	s.mode = m
+}
+
 func (s *State) HandleKey(e *tcell.EventKey) bool {
 	switch s.mode {
 	case modeNormal:
 		switch e.Key() {
 		case tcell.KeyRune:
 			switch e.Rune() {
+			// mode transitions
 			case ' ':
-				s.mode = modeSpace
+				s.setMode(modeSpace)
+			case 'a':
+				s.setMode(modeInsert)
+			case 'A':
+				s.newLineAbove()
+				s.setMode(modeInsert)
+			case 'd':
+				s.setCursorX(&s.Cursor, s.Cursor.X+1)
+				s.setMode(modeInsert)
+			case 'D':
+				s.move(s.moveEndOfLine)
+				s.setCursorX(&s.Cursor, s.Cursor.X+1)
+				s.setMode(modeInsert)
+				s.insert('\n')
+			case 'f':
+				s.delete()
+				s.setMode(modeInsert)
+			case 'F':
+				s.deleteLines()
+				s.newLineAbove()
+				s.setMode(modeInsert)
+
+			// movements
 			case 'y':
 				s.move(s.moveStartOfLine)
-			case 'o':
-				s.move(s.moveEndOfLine)
-			case 'u':
-				s.move(s.moveStartOfWord)
-			case 'i':
-				s.move(s.moveEndOfWord)
-			case 'h':
-				s.move(s.moveLeft)
-			case 'l':
-				s.move(s.moveRight)
-			case 'k':
-				s.move(func(c *cursor) { s.moveUp(c, 1) })
-			case 'j':
-				s.move(func(c *cursor) { s.moveDown(c, 1) })
 			case 'Y':
 				s.moveStartOfLine(&s.Cursor)
+			case 'o':
+				s.move(s.moveEndOfLine)
 			case 'O':
 				s.moveEndOfLine(&s.Cursor)
+			case 'u':
+				s.move(s.moveStartOfWord)
 			case 'U':
 				s.moveStartOfWord(&s.Cursor)
+			case 'i':
+				s.move(s.moveEndOfWord)
 			case 'I':
 				s.moveEndOfWord(&s.Cursor)
+			case 'h':
+				s.move(s.moveLeft)
 			case 'H':
 				s.moveLeft(&s.Cursor)
+			case 'l':
+				s.move(s.moveRight)
 			case 'L':
 				s.moveRight(&s.Cursor)
+			case 'k':
+				s.move(func(c *cursor) { s.moveUp(c, 1) })
 			case 'K':
 				s.moveUp(&s.Cursor, 1)
+			case 'j':
+				s.move(func(c *cursor) { s.moveDown(c, 1) })
 			case 'J':
 				s.moveDown(&s.Cursor, 1)
+
+			// actions
+			case 'x':
+				s.delete()
+			case 'X':
+				s.deleteLines()
 			}
 		case tcell.KeyUp:
 			if e.Modifiers() == tcell.ModShift {
@@ -204,8 +364,27 @@ func (s *State) HandleKey(e *tcell.EventKey) bool {
 			} else {
 				s.move(func(c *cursor) { s.moveDown(c, 9) })
 			}
-		case tcell.KeyEscape:
+		case tcell.KeyESC:
 			s.Anchor = s.Cursor
+		}
+	case modeInsert:
+		switch e.Key() {
+		case tcell.KeyRune:
+			s.insert(e.Rune())
+		case tcell.KeyTAB:
+			s.insert('\t')
+		case tcell.KeyCR:
+			s.insert('\n')
+		case tcell.KeyDEL:
+			s.insertBackspace()
+		case 0x17:
+			s.insertBackspaceWord()
+		case tcell.KeyDelete:
+			s.insertDelete()
+		case tcell.KeyESC:
+			s.setMode(modeNormal)
+		default:
+			s.Msg = fmt.Sprintf("%d", tcell.KeyDelete)
 		}
 	case modeSpace:
 		switch e.Key() {
@@ -232,4 +411,8 @@ func (s *State) debugUnicode() {
 	} else {
 		s.Msg = "EMPTY"
 	}
+}
+
+func (s *State) debugCursor() {
+	s.Msg = fmt.Sprintf("a:%+v c:%+v", s.Anchor, s.Cursor)
 }
