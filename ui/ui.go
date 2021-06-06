@@ -20,20 +20,6 @@ type Renderer struct {
 	w, h   int
 }
 
-func min(x, y int) int {
-	if x < y {
-		return x
-	}
-	return y
-}
-
-func max(x, y int) int {
-	if x > y {
-		return x
-	}
-	return y
-}
-
 func (r *Renderer) renderText(height int) {
 	// Discard lines we definitely won't be rendering.
 	start := max(0, min(r.S.Cursor.Y-(height-1)/2, len(r.S.Text)-height))
@@ -136,4 +122,18 @@ func (r *Renderer) Render() {
 	r.renderText(r.h - 2)
 	r.renderStatus(r.h - 2)
 	r.Screen.Show()
+}
+
+func min(x, y int) int {
+	if x < y {
+		return x
+	}
+	return y
+}
+
+func max(x, y int) int {
+	if x > y {
+		return x
+	}
+	return y
 }

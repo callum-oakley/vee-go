@@ -1,10 +1,11 @@
 package state
 
 func (s *State) newLineAbove() {
-	s.Text = append(
-		s.Text[:s.Cursor.Y],
-		append([]string{""}, s.Text[s.Cursor.Y:]...)...,
-	)
+	s.applyDiff(diff{
+		start:  s.Cursor.Y,
+		before: []string{},
+		after:  []string{""},
+	})
 	s.setCursorY(&s.Cursor, s.Cursor.Y)
 	s.Anchor = s.Cursor
 }
@@ -18,20 +19,29 @@ func (s *State) normaliseSelection() {
 
 func (s *State) delete() {
 	s.normaliseSelection()
+	var after string
 	if s.Anchor.X == -1 {
-		s.Text[s.Cursor.Y] = s.Text[s.Cursor.Y][s.Cursor.X+1:]
+		after = s.Text[s.Cursor.Y][s.Cursor.X+1:]
 	} else {
-		s.Text[s.Cursor.Y] = s.Text[s.Anchor.Y][:s.Anchor.X] +
+		after = s.Text[s.Anchor.Y][:s.Anchor.X] +
 			s.Text[s.Cursor.Y][s.Cursor.X+1:]
 	}
-	s.Text = append(s.Text[:s.Anchor.Y], s.Text[s.Cursor.Y:]...)
+	s.applyDiff(diff{
+		start:  s.Anchor.Y,
+		before: s.Text[s.Anchor.Y : s.Cursor.Y+1],
+		after:  []string{after},
+	})
 	s.setCursorY(&s.Anchor, s.Anchor.Y)
 	s.Cursor = s.Anchor
 }
 
 func (s *State) deleteLines() {
 	s.normaliseSelection()
-	s.Text = append(s.Text[:s.Anchor.Y], s.Text[s.Cursor.Y+1:]...)
+	s.applyDiff(diff{
+		start:  s.Anchor.Y,
+		before: s.Text[s.Anchor.Y : s.Cursor.Y+1],
+		after:  []string{},
+	})
 	if s.Anchor.Y >= len(s.Text) {
 		s.Anchor.Y = len(s.Text) - 1
 	}

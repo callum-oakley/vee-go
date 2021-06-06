@@ -23,7 +23,7 @@ type State struct {
 	Anchor, Cursor cursor
 	mode           mode
 	Msg            string
-	snapshot       snapshot
+	change         change
 	history        []change
 	historyHead    int
 }
@@ -38,28 +38,28 @@ func (s *State) HandleKey(e *tcell.EventKey) bool {
 			case ' ':
 				s.setMode(modeSpace)
 			case 'a':
-				s.takeSnapshot()
+				s.startChange()
 				s.setMode(modeInsert)
 			case 'A':
-				s.takeSnapshot()
+				s.startChange()
 				s.newLineAbove()
 				s.setMode(modeInsert)
 			case 'd':
-				s.takeSnapshot()
+				s.startChange()
 				s.setCursorX(&s.Cursor, s.Cursor.X+1)
 				s.setMode(modeInsert)
 			case 'D':
-				s.takeSnapshot()
+				s.startChange()
 				s.move(s.moveEndOfLine)
 				s.setCursorX(&s.Cursor, s.Cursor.X+1)
 				s.setMode(modeInsert)
 				s.insert('\n')
 			case 'f':
-				s.takeSnapshot()
+				s.startChange()
 				s.delete()
 				s.setMode(modeInsert)
 			case 'F':
-				s.takeSnapshot()
+				s.startChange()
 				s.deleteLines()
 				s.newLineAbove()
 				s.setMode(modeInsert)
@@ -100,13 +100,13 @@ func (s *State) HandleKey(e *tcell.EventKey) bool {
 
 			// actions
 			case 'x':
-				s.takeSnapshot()
+				s.startChange()
 				s.delete()
-				s.recordHistory()
+				s.endChange()
 			case 'X':
-				s.takeSnapshot()
+				s.startChange()
 				s.deleteLines()
-				s.recordHistory()
+				s.endChange()
 			case 'z':
 				s.undo()
 			case 'Z':

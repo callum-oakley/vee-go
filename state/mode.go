@@ -14,7 +14,7 @@ func (s *State) setMode(m mode) {
 	case modeInsert:
 		s.move(s.moveLeft)
 		setCursorShape(1)
-		s.recordHistory()
+		s.endChange()
 	}
 	switch m {
 	case modeInsert:

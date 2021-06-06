@@ -2,6 +2,7 @@ package state
 
 import (
 	"fmt"
+	"os"
 	"unicode/utf8"
 
 	rw "github.com/mattn/go-runewidth"
@@ -21,4 +22,15 @@ func (s *State) debugUnicode() {
 
 func (s *State) debugCursor() {
 	s.Msg = fmt.Sprintf("a:%+v c:%+v", s.Anchor, s.Cursor)
+}
+
+func (s *State) debugLog(msg string) {
+	f, err := os.OpenFile("vee.log", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(fmt.Sprintf("%v\n", msg)); err != nil {
+		panic(err)
+	}
 }

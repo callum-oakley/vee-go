@@ -1,66 +1,97 @@
 package state
 
-type snapshot struct {
-	text           []string
-	anchor, cursor cursor
+type diff struct {
+	start         int
+	before, after []string
 }
 
 type change struct {
-	before, after              snapshot
-	commonPrefix, commonSuffix int
+	diff
+	anchorBefore, anchorAfter, cursorBefore, cursorAfter cursor
 }
 
-func (s *State) takeSnapshot() {
-	s.snapshot.text = make([]string, len(s.Text))
-	copy(s.snapshot.text, s.Text)
-	s.snapshot.anchor = s.Anchor
-	s.snapshot.cursor = s.Cursor
+func (d *diff) isEmpty() bool {
+	return len(d.before) == 0 && len(d.after) == 0
 }
 
-func (s *State) recordHistory() {
-	var c change
-
-	for c.commonPrefix < len(s.Text) && c.commonPrefix < len(s.snapshot.text) &&
-		s.Text[c.commonPrefix] == s.snapshot.text[c.commonPrefix] {
-		c.commonPrefix++
+func apply(d diff, text []string) []string {
+	if d.isEmpty() {
+		return text
 	}
+	return append(
+		text[:d.start],
+		append(d.after, text[d.start+len(d.before):]...)...,
+	)
+}
 
-	if c.commonPrefix == len(s.Text) && c.commonPrefix == len(s.snapshot.text) {
+func revert(d diff, text []string) []string {
+	if d.isEmpty() {
+		return text
+	}
+	return append(
+		text[:d.start],
+		append(d.before, text[d.start+len(d.after):]...)...,
+	)
+}
+
+func compose(b diff, a diff) diff {
+	if a.isEmpty() {
+		return b
+	}
+	start := min(a.start, b.start)
+	end := max(a.start+len(a.after), b.start+len(b.before))
+	intermediateA := make([]string, end-start)
+	intermediateB := make([]string, end-start)
+	for i := start; i < end; i++ {
+		if i >= a.start && i < a.start+len(a.after) {
+			intermediateA[i-start] = a.after[i-a.start]
+			intermediateB[i-start] = a.after[i-a.start]
+		} else {
+			intermediateA[i-start] = b.before[i-b.start]
+			intermediateB[i-start] = b.before[i-b.start]
+		}
+	}
+	return diff{
+		start: start,
+		before: revert(
+			diff{start: a.start - start, before: a.before, after: a.after},
+			intermediateA,
+		),
+		after: apply(
+			diff{start: b.start - start, before: b.before, after: b.after},
+			intermediateB,
+		),
+	}
+}
+
+func (s *State) startChange() {
+	s.change = change{
+		anchorBefore: s.Anchor,
+		cursorBefore: s.Cursor,
+	}
+}
+
+func (s *State) endChange() {
+	if s.change.isEmpty() {
 		return
 	}
-
-	for c.commonSuffix < len(s.Text)-c.commonPrefix &&
-		c.commonSuffix < len(s.snapshot.text)-c.commonPrefix &&
-		s.Text[len(s.Text)-1-c.commonSuffix] ==
-			s.snapshot.text[len(s.snapshot.text)-1-c.commonSuffix] {
-		c.commonSuffix++
-	}
-
-	c.before.text = make(
-		[]string,
-		len(s.snapshot.text)-c.commonPrefix-c.commonSuffix,
-	)
-	copy(
-		c.before.text,
-		s.snapshot.text[c.commonPrefix:len(s.snapshot.text)-c.commonSuffix],
-	)
-	c.before.anchor = s.snapshot.anchor
-	c.before.cursor = s.snapshot.cursor
-
-	c.after.text = make(
-		[]string,
-		len(s.Text)-c.commonPrefix-c.commonSuffix,
-	)
-	copy(
-		c.after.text,
-		s.Text[c.commonPrefix:len(s.Text)-c.commonSuffix],
-	)
-	c.after.anchor = s.Anchor
-	c.after.cursor = s.Cursor
-
-	s.history = s.history[:s.historyHead]
-	s.history = append(s.history, c)
+	s.change.anchorAfter = s.Anchor
+	s.change.cursorAfter = s.Cursor
+	s.history = append(s.history[:s.historyHead], s.change)
 	s.historyHead++
+}
+
+func (s *State) applyDiff(d diff) {
+	before := d.before
+	d.before = make([]string, len(before))
+	copy(d.before, before)
+
+	after := d.after
+	d.after = make([]string, len(after))
+	copy(d.after, after)
+
+	s.Text = apply(d, s.Text)
+	s.change.diff = compose(d, s.change.diff)
 }
 
 func (s *State) undo() {
@@ -68,25 +99,31 @@ func (s *State) undo() {
 		return
 	}
 	s.historyHead--
-	h := s.history[s.historyHead]
-	s.Text = append(
-		s.Text[:h.commonPrefix],
-		append(h.before.text, s.Text[len(s.Text)-h.commonSuffix:]...)...,
-	)
-	s.Anchor = h.before.anchor
-	s.Cursor = h.before.cursor
+	s.Text = revert(s.history[s.historyHead].diff, s.Text)
+	s.Anchor = s.history[s.historyHead].anchorBefore
+	s.Cursor = s.history[s.historyHead].cursorBefore
 }
 
 func (s *State) redo() {
 	if s.historyHead >= len(s.history) {
 		return
 	}
-	h := s.history[s.historyHead]
+	s.Text = apply(s.history[s.historyHead].diff, s.Text)
+	s.Anchor = s.history[s.historyHead].anchorAfter
+	s.Cursor = s.history[s.historyHead].cursorAfter
 	s.historyHead++
-	s.Text = append(
-		s.Text[:h.commonPrefix],
-		append(h.after.text, s.Text[len(s.Text)-h.commonSuffix:]...)...,
-	)
-	s.Anchor = h.after.anchor
-	s.Cursor = h.after.cursor
+}
+
+func min(x, y int) int {
+	if x < y {
+		return x
+	}
+	return y
+}
+
+func max(x, y int) int {
+	if x > y {
+		return x
+	}
+	return y
 }
