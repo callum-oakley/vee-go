@@ -21,9 +21,14 @@ type cursor struct {
 	X, Y, col int
 }
 
-type history struct {
+type snapshot struct {
 	text           []string
 	anchor, cursor cursor
+}
+
+type diff struct {
+	before, after              snapshot
+	commonPrefix, commonSuffix int
 }
 
 type State struct {
@@ -33,12 +38,9 @@ type State struct {
 	Anchor, Cursor cursor
 	mode           mode
 	Msg            string
+	snapshot       snapshot
+	history        []diff
 	historyHead    int
-	history        []history
-}
-
-func (s *State) Init() {
-	s.snapshot()
 }
 
 func visualWidth(col, tabWidth int, char rune) int {
@@ -195,6 +197,9 @@ func (s *State) delete() {
 func (s *State) deleteLines() {
 	s.normaliseSelection()
 	s.Text = append(s.Text[:s.Anchor.Y], s.Text[s.Cursor.Y+1:]...)
+	if s.Anchor.Y >= len(s.Text) {
+		s.Anchor.Y = len(s.Text) - 1
+	}
 	s.setCursorY(&s.Anchor, s.Anchor.Y)
 	s.Cursor = s.Anchor
 }
@@ -280,7 +285,7 @@ func (s *State) setMode(m mode) {
 	case modeInsert:
 		s.move(s.moveLeft)
 		setCursorShape(1)
-		s.snapshot()
+		s.recordHistory()
 	}
 	switch m {
 	case modeInsert:
@@ -293,51 +298,85 @@ func (s *State) setMode(m mode) {
 	s.mode = m
 }
 
-// TODO something like this to model changes instead?
-// type snap struct {
-// 	anchor, cursor Cursor
-// 	startY, endY   int
-// 	chunk          []string
-// }
+func (s *State) takeSnapshot() {
+	s.snapshot.text = make([]string, len(s.Text))
+	copy(s.snapshot.text, s.Text)
+	s.snapshot.anchor = s.Anchor
+	s.snapshot.cursor = s.Cursor
+}
 
-// type change struct {
-// 	before, after snap
-// }
+func (s *State) recordHistory() {
+	var d diff
 
-// TODO This is horrendously wasteful of memory but will do for a first pass. A
-// better implementation would just store a sequence of insertions and
-// deletions that can be reverted or reapplied.
-func (s *State) snapshot() {
-	text := make([]string, len(s.Text))
-	copy(text, s.Text)
-	s.history = s.history[:s.historyHead]
-	s.history = append(
-		s.history,
-		history{text: text, anchor: s.Anchor, cursor: s.Cursor},
+	for d.commonPrefix < len(s.Text) && d.commonPrefix < len(s.snapshot.text) &&
+		s.Text[d.commonPrefix] == s.snapshot.text[d.commonPrefix] {
+		d.commonPrefix++
+	}
+
+	if d.commonPrefix == len(s.Text) && d.commonPrefix == len(s.snapshot.text) {
+		return
+	}
+
+	for d.commonSuffix < len(s.Text)-d.commonPrefix &&
+		d.commonSuffix < len(s.snapshot.text)-d.commonPrefix &&
+		s.Text[len(s.Text)-1-d.commonSuffix] ==
+			s.snapshot.text[len(s.snapshot.text)-1-d.commonSuffix] {
+		d.commonSuffix++
+	}
+
+	d.before.text = make(
+		[]string,
+		len(s.snapshot.text)-d.commonPrefix-d.commonSuffix,
 	)
+	copy(
+		d.before.text,
+		s.snapshot.text[d.commonPrefix:len(s.snapshot.text)-d.commonSuffix],
+	)
+	d.before.anchor = s.snapshot.anchor
+	d.before.cursor = s.snapshot.cursor
+
+	d.after.text = make(
+		[]string,
+		len(s.Text)-d.commonPrefix-d.commonSuffix,
+	)
+	copy(
+		d.after.text,
+		s.Text[d.commonPrefix:len(s.Text)-d.commonSuffix],
+	)
+	d.after.anchor = s.Anchor
+	d.after.cursor = s.Cursor
+
+	s.history = s.history[:s.historyHead]
+	s.history = append(s.history, d)
 	s.historyHead++
 }
 
 func (s *State) undo() {
-	if s.historyHead <= 1 {
+	if s.historyHead == 0 {
 		return
 	}
-	s.Text = make([]string, len(s.history[s.historyHead-2].text))
-	copy(s.Text, s.history[s.historyHead-2].text)
-	s.Anchor = s.history[s.historyHead-2].anchor
-	s.Cursor = s.history[s.historyHead-2].cursor
 	s.historyHead--
+	h := s.history[s.historyHead]
+	s.Text = append(
+		s.Text[:h.commonPrefix],
+		append(h.before.text, s.Text[len(s.Text)-h.commonSuffix:]...)...,
+	)
+	s.Anchor = h.before.anchor
+	s.Cursor = h.before.cursor
 }
 
 func (s *State) redo() {
-	if s.historyHead == len(s.history) {
+	if s.historyHead >= len(s.history) {
 		return
 	}
-	s.Text = make([]string, len(s.history[s.historyHead].text))
-	copy(s.Text, s.history[s.historyHead].text)
-	s.Anchor = s.history[s.historyHead].anchor
-	s.Cursor = s.history[s.historyHead].cursor
+	h := s.history[s.historyHead]
 	s.historyHead++
+	s.Text = append(
+		s.Text[:h.commonPrefix],
+		append(h.after.text, s.Text[len(s.Text)-h.commonSuffix:]...)...,
+	)
+	s.Anchor = h.after.anchor
+	s.Cursor = h.after.cursor
 }
 
 func (s *State) HandleKey(e *tcell.EventKey) bool {
@@ -350,22 +389,28 @@ func (s *State) HandleKey(e *tcell.EventKey) bool {
 			case ' ':
 				s.setMode(modeSpace)
 			case 'a':
+				s.takeSnapshot()
 				s.setMode(modeInsert)
 			case 'A':
+				s.takeSnapshot()
 				s.newLineAbove()
 				s.setMode(modeInsert)
 			case 'd':
+				s.takeSnapshot()
 				s.setCursorX(&s.Cursor, s.Cursor.X+1)
 				s.setMode(modeInsert)
 			case 'D':
+				s.takeSnapshot()
 				s.move(s.moveEndOfLine)
 				s.setCursorX(&s.Cursor, s.Cursor.X+1)
 				s.setMode(modeInsert)
 				s.insert('\n')
 			case 'f':
+				s.takeSnapshot()
 				s.delete()
 				s.setMode(modeInsert)
 			case 'F':
+				s.takeSnapshot()
 				s.deleteLines()
 				s.newLineAbove()
 				s.setMode(modeInsert)
@@ -406,11 +451,13 @@ func (s *State) HandleKey(e *tcell.EventKey) bool {
 
 			// actions
 			case 'x':
+				s.takeSnapshot()
 				s.delete()
-				s.snapshot()
+				s.recordHistory()
 			case 'X':
+				s.takeSnapshot()
 				s.deleteLines()
-				s.snapshot()
+				s.recordHistory()
 			case 'z':
 				s.undo()
 			case 'Z':
@@ -447,8 +494,6 @@ func (s *State) HandleKey(e *tcell.EventKey) bool {
 			s.insertDelete()
 		case tcell.KeyESC:
 			s.setMode(modeNormal)
-		default:
-			s.Msg = fmt.Sprintf("%d", tcell.KeyDelete)
 		}
 	case modeSpace:
 		switch e.Key() {

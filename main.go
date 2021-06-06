@@ -24,7 +24,6 @@ func main() {
 		TabWidth: 4,
 		Text:     lines,
 	}
-	s.Init()
 
 	screen, err := tcell.NewScreen()
 	if err != nil {
