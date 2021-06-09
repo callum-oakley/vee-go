@@ -21,10 +21,10 @@ func (s *State) delete() {
 	s.normaliseSelection()
 	var after string
 	if s.Anchor.X == -1 {
-		after = s.Text[s.Cursor.Y][s.Cursor.X+1:]
+		after = s.Text[s.Cursor.Y][s.xRightOf(&s.Cursor):]
 	} else {
 		after = s.Text[s.Anchor.Y][:s.Anchor.X] +
-			s.Text[s.Cursor.Y][s.Cursor.X+1:]
+			s.Text[s.Cursor.Y][s.xRightOf(&s.Cursor):]
 	}
 	s.applyDiff(diff{
 		start:  s.Anchor.Y,

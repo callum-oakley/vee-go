@@ -46,12 +46,12 @@ func (s *State) HandleKey(e *tcell.EventKey) bool {
 				s.setMode(modeInsert)
 			case 'd':
 				s.startChange()
-				s.setCursorX(&s.Cursor, s.Cursor.X+1)
+				s.setCursorX(&s.Cursor, s.xRightOf(&s.Cursor))
 				s.setMode(modeInsert)
 			case 'D':
 				s.startChange()
 				s.move(s.moveEndOfLine)
-				s.setCursorX(&s.Cursor, s.Cursor.X+1)
+				s.setCursorX(&s.Cursor, s.xRightOf(&s.Cursor))
 				s.setMode(modeInsert)
 				s.insert('\n')
 			case 'f':

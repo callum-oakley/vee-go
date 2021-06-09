@@ -35,12 +35,21 @@ func (s *State) setCursorY(c *cursor, y int) {
 	}
 }
 
+func (s *State) xLeftOf(c *cursor) int {
+	_, size := utf8.DecodeLastRuneInString(s.Text[c.Y][:c.X])
+	return c.X - size
+}
+
+func (s *State) xRightOf(c *cursor) int {
+	_, size := utf8.DecodeRuneInString(s.Text[c.Y][c.X:])
+	return c.X + size
+}
+
 func (s *State) moveLeft(c *cursor) {
 	if c.X <= 0 {
 		return
 	}
-	_, size := utf8.DecodeLastRuneInString(s.Text[c.Y][:c.X])
-	s.setCursorX(c, c.X-size)
+	s.setCursorX(c, s.xLeftOf(c))
 }
 
 func (s *State) moveRight(c *cursor) {
@@ -51,8 +60,7 @@ func (s *State) moveRight(c *cursor) {
 	if c.X == len(s.Text[c.Y])-sizeLast {
 		return
 	}
-	_, size := utf8.DecodeRuneInString(s.Text[c.Y][c.X:])
-	s.setCursorX(c, c.X+size)
+	s.setCursorX(c, s.xRightOf(c))
 }
 
 func (s *State) moveUp(c *cursor, n int) {
@@ -118,7 +126,7 @@ func (s *State) moveEndOfWord(c *cursor) {
 		return
 	}
 	if match := reEndOfWord.FindStringIndex(
-		s.Text[c.Y][c.X+1:],
+		s.Text[c.Y][s.xRightOf(c):],
 	); match != nil {
 		s.setCursorX(c, c.X+match[1])
 	}

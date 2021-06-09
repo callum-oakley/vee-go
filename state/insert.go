@@ -21,7 +21,7 @@ func (s *State) insert(char rune) {
 		after: []string{s.Text[s.Cursor.Y][:s.Cursor.X] + string(char) +
 			s.Text[s.Cursor.Y][s.Cursor.X:]},
 	})
-	s.setCursorX(&s.Cursor, s.Cursor.X+1)
+	s.setCursorX(&s.Cursor, s.xRightOf(&s.Cursor))
 	s.Anchor = s.Cursor
 }
 
@@ -44,10 +44,11 @@ func (s *State) insertBackspace() {
 		start:  s.Cursor.Y,
 		before: s.Text[s.Cursor.Y : s.Cursor.Y+1],
 		after: []string{
-			s.Text[s.Cursor.Y][:s.Cursor.X-1] + s.Text[s.Cursor.Y][s.Cursor.X:],
+			s.Text[s.Cursor.Y][:s.xLeftOf(&s.Cursor)] +
+				s.Text[s.Cursor.Y][s.Cursor.X:],
 		},
 	})
-	s.setCursorX(&s.Cursor, s.Cursor.X-1)
+	s.setCursorX(&s.Cursor, s.xLeftOf(&s.Cursor))
 	s.Anchor = s.Cursor
 }
 
@@ -95,7 +96,8 @@ func (s *State) insertDelete() {
 		start:  s.Cursor.Y,
 		before: s.Text[s.Cursor.Y : s.Cursor.Y+1],
 		after: []string{
-			s.Text[s.Cursor.Y][:s.Cursor.X] + s.Text[s.Cursor.Y][s.Cursor.X+1:],
+			s.Text[s.Cursor.Y][:s.Cursor.X] +
+				s.Text[s.Cursor.Y][s.xRightOf(&s.Cursor):],
 		},
 	})
 }
