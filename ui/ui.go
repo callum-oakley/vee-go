@@ -110,7 +110,7 @@ func padBetween(left, right string, width int) string {
 func (r *Renderer) renderStatus(y int) {
 	puts(r.Screen, statusStyle, 0, y, padBetween(
 		r.S.FilePath,
-		fmt.Sprintf("%v", r.S.Cursor.Y+1),
+		fmt.Sprintf("%v,%v", r.S.Cursor.X+1, r.S.Cursor.Y+1),
 		r.w,
 	))
 	puts(r.Screen, tcell.StyleDefault, 0, y+1, r.S.Msg)

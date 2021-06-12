@@ -40,15 +40,15 @@ func (s *State) insertBackspace() {
 		s.Anchor = s.Cursor
 		return
 	}
+	newCursorX := s.xLeftOf(&s.Cursor)
 	s.applyDiff(diff{
 		start:  s.Cursor.Y,
 		before: s.Text[s.Cursor.Y : s.Cursor.Y+1],
 		after: []string{
-			s.Text[s.Cursor.Y][:s.xLeftOf(&s.Cursor)] +
-				s.Text[s.Cursor.Y][s.Cursor.X:],
+			s.Text[s.Cursor.Y][:newCursorX] + s.Text[s.Cursor.Y][s.Cursor.X:],
 		},
 	})
-	s.setCursorX(&s.Cursor, s.xLeftOf(&s.Cursor))
+	s.setCursorX(&s.Cursor, newCursorX)
 	s.Anchor = s.Cursor
 }
 

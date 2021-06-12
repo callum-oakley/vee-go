@@ -19,17 +19,21 @@ func (s *State) normaliseSelection() {
 
 func (s *State) delete() {
 	s.normaliseSelection()
-	var after string
-	if s.Anchor.X == -1 {
-		after = s.Text[s.Cursor.Y][s.xRightOf(&s.Cursor):]
+	var after []string
+	if s.Anchor.X == -1 && s.Cursor.X == -1 {
+		after = []string{}
+	} else if s.Anchor.X == -1 {
+		after = []string{s.Text[s.Cursor.Y][s.xRightOf(&s.Cursor):]}
+	} else if s.Cursor.X == -1 {
+		after = []string{s.Text[s.Anchor.Y][:s.Anchor.X]}
 	} else {
-		after = s.Text[s.Anchor.Y][:s.Anchor.X] +
-			s.Text[s.Cursor.Y][s.xRightOf(&s.Cursor):]
+		after = []string{s.Text[s.Anchor.Y][:s.Anchor.X] +
+			s.Text[s.Cursor.Y][s.xRightOf(&s.Cursor):]}
 	}
 	s.applyDiff(diff{
 		start:  s.Anchor.Y,
 		before: s.Text[s.Anchor.Y : s.Cursor.Y+1],
-		after:  []string{after},
+		after:  after,
 	})
 	s.setCursorY(&s.Anchor, s.Anchor.Y)
 	s.Cursor = s.Anchor
