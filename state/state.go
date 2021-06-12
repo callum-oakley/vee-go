@@ -111,6 +111,8 @@ func (s *State) HandleKey(e *tcell.EventKey) bool {
 				s.undo()
 			case 'Z':
 				s.redo()
+			case 'w':
+				s.save()
 			}
 		case tcell.KeyUp:
 			if e.Modifiers() == tcell.ModShift {

@@ -16,7 +16,7 @@ func main() {
 		panic(err)
 	}
 	lines := strings.Split(string(text), "\n")
-	if len(lines[len(lines)-1]) == 0 {
+	if lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
 	s := state.State{
