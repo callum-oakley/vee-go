@@ -113,6 +113,12 @@ func (s *State) HandleKey(e *tcell.EventKey) bool {
 				s.redo()
 			case 'w':
 				s.save()
+			case 'c':
+				s.copy()
+			case 'v':
+				s.startChange()
+				s.paste()
+				s.endChange()
 			}
 		case tcell.KeyUp:
 			if e.Modifiers() == tcell.ModShift {

@@ -10,11 +10,16 @@ func (s *State) newLineAbove() {
 	s.Anchor = s.Cursor
 }
 
-func (s *State) normaliseSelection() {
+func (s *State) normalisedSelection() (cursor, cursor) {
 	if s.Cursor.Y < s.Anchor.Y ||
 		s.Cursor.Y == s.Anchor.Y && s.Cursor.X < s.Anchor.X {
-		s.Cursor, s.Anchor = s.Anchor, s.Cursor
+		return s.Cursor, s.Anchor
 	}
+	return s.Anchor, s.Cursor
+}
+
+func (s *State) normaliseSelection() {
+	s.Anchor, s.Cursor = s.normalisedSelection()
 }
 
 func (s *State) delete() {
